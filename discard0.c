@@ -20,7 +20,7 @@
 
 #define log(lvl, fmt, ...) do {					\
 		if (LOG_PRI(lvl) < opts.loglevel)	\
-			fprintf(stderr, fmt, __VA_ARGS__);	\
+			fprintf(stderr, fmt, ##__VA_ARGS__);	\
 	} while (0)
 
 static struct discard_opts {
@@ -32,8 +32,10 @@ static struct discard_opts {
 	int minor;
 	int fd;
 	int loglevel;
+	bool dry;
 } opts = {
-	.loglevel = LOG_PRI(LOG_INFO) + 1
+	.loglevel = LOG_PRI(LOG_NOTICE) + 1,
+	.dry = false
 };
 
 static char *_get_sysfs_attr(const char *filename)
@@ -132,7 +134,8 @@ static void usage(const char *me)
 		"Options:\n"
 		"\t-v: increase verbosity level\n"
 		"\t-q: decrease verbosity level\n"
-		"\t-y: don't ask for confirmation\n", me);
+		"\t-y: don't ask for confirmation\n"
+		"\t-n: dry-run\n", me);
 }
 
 static bool confirm(const char *name)
@@ -159,7 +162,7 @@ static bool confirm(const char *name)
 
 static int parse_opts(int argc, char *const argv[])
 {
-	static const char optstring[] = "vqy";
+	static const char optstring[] = "vqyn";
 	struct stat st;
 	unsigned long val;
 	bool force = false;
@@ -175,6 +178,9 @@ static int parse_opts(int argc, char *const argv[])
 			break;
 		case 'q':
 			opts.loglevel--;
+			break;
+		case 'n':
+			opts.dry = true;
 			break;
 		case 'y':
 			force = true;
@@ -237,8 +243,11 @@ getopt_done:
 	    opts.name, opts.major, opts.minor, opts.dev_size, opts.size,
 	    opts.granularity);
 
-	if (!force && !confirm(opts.name))
+	if (!opts.dry && !force && !confirm(opts.name))
 		return -1;
+	if (opts.dry)
+		log(LOG_NOTICE, "%s: DRY RUN. Not changing any data.\n",
+		    argv[0]);
 
 	return 0;
 }
@@ -285,6 +294,7 @@ static int discard0(void)
 	int ret = -1;
 	off_t ofs = 0;
 	uint64_t range[2] = { OFS_INVAL, OFS_INVAL };
+	uint64_t freed = 0;
 	bool need_seek = true, last = false;
 	unsigned int chunksz = opts.granularity;
 
@@ -352,12 +362,15 @@ static int discard0(void)
 			    __func__, range[0], range[0] + range[1],
 			    range[1] >> 9);
 
-			res = ioctl(opts.fd, BLKDISCARD, &range);
-			if (res == -1) {
-				log(LOG_ERR, "%s: discard: %s\n",
-				    __func__, strerror(errno));
-				goto out;
+			if (!opts.dry) {
+				res = ioctl(opts.fd, BLKDISCARD, &range);
+				if (res == -1) {
+					log(LOG_ERR, "%s: discard: %s\n",
+					    __func__, strerror(errno));
+					goto out;
+				}
 			}
+			freed += range[1];
 
 			range[0] = range[1] = OFS_INVAL;
 		}
@@ -366,6 +379,7 @@ static int discard0(void)
 out:
 	free(fbuf);
 	close(opts.fd);
+	printf("%" PRIu64 " storage bytes discarded\n", freed);
 	return ret;
 }
 
