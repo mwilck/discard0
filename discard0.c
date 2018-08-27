@@ -238,6 +238,12 @@ getopt_done:
 	else
 		opts.granularity = val;
 
+	if (opts.granularity <= 0) {
+		log(LOG_CRIT, "%s: invalid discard granularity: %u\n",
+		    __func__, opts.granularity);
+		return -1;
+	}
+
 	if (ioctl(opts.fd, BLKGETSIZE64, &opts.dev_size) == -1) {
 		log(LOG_CRIT, "%s: %d:%d: failed to get size\n", __func__,
 		    opts.major, opts.minor);
