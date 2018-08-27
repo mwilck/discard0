@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2018 Martin Wilck, SUSE Linux GmbH
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 #define _FILE_OFFSET_BITS 64
 #include <stdio.h>
 #include <stdlib.h>
